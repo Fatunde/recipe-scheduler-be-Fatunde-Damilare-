@@ -8,7 +8,8 @@
     "dev": "tsx watch src/app.ts",
     "start": "node dist/app.js",
     "worker": "tsx watch src/worker.ts",
-    "test": "jest"
+    "test": "jest",
+    "start:docker-dev": "docker-compose -f docker-compose.yml -f docker-compose.dev.yml up --build"
   },
   "dependencies": {
     "express": "^4.18.2",
