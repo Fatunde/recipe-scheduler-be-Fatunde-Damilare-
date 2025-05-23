@@ -1,0 +1,85 @@
+version: '3.8'
+
+services:
+  # Redis Queue
+  redis:
+    image: redis:7-alpine
+    container_name: event-reminder-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # API Server
+  api:
+    build:
+      context: .
+      target: runner
+      platforms:
+        - linux/amd64
+        - linux/arm64
+    container_name: event-reminder-api
+    restart: unless-stopped
+    ports:
+      - "6000:6000"
+    environment:
+      - NODE_ENV=production
+      - PORT=6000
+      - DATABASE_URL=/app/data/database.sqlite
+      - REDIS_URL=redis://redis:6379
+      - REMINDER_LEAD_MINUTES=15
+      - EXPO_ACCESS_TOKEN=${EXPO_ACCESS_TOKEN:-}
+    volumes:
+      - api_data:/app/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:6000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    command: ["node", "dist/app.js"]
+
+  # Worker Service
+  worker:
+    build:
+      context: .
+      target: runner
+      platforms:
+        - linux/amd64
+        - linux/arm64
+    container_name: event-reminder-worker
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=/app/data/database.sqlite
+      - REDIS_URL=redis://redis:6379
+      - REMINDER_LEAD_MINUTES=15
+      - EXPO_ACCESS_TOKEN=${EXPO_ACCESS_TOKEN:-}
+    volumes:
+      - api_data:/app/data
+    depends_on:
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    command: ["node", "dist/worker.js"]
+
+volumes:
+  redis_data:
+    driver: local
+  api_data:
+    driver: local
+
+networks:
+  default:
+    name: event-reminder-network
